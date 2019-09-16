@@ -1,0 +1,276 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+#define HASHSCALE1 .1031
+#define HASHSCALE3 float3(.1031, .1030, .0973)
+#define HASHSCALE4 float4(.1031, .1030, .0973, .1099)
+
+float Hash11(float p)
+{
+	float3 p3  = frac(p.xxx * HASHSCALE1);
+    p3 += dot(p3, p3.yzx + 19.19);
+    return frac((p3.x + p3.y) * p3.z); 
+}
+
+///  2 out, 2 in...
+float2 Hash22(float2 p)
+{
+	float3 p3 = frac(float3(p.xyx) * HASHSCALE3);
+    p3 += dot(p3, p3.yzx+19.19);
+    return frac((p3.xx+p3.yz)*p3.zy);
+
+}
+
+
+//随机数值生成器
+float2 Random2(float2 co)
+{
+    float x = frac(sin(dot(co.xy ,float2(122.9898,783.233))) * 43758.5453);
+    float y = frac(sin(dot(co.xy ,float2(457.6537,537.2793))) * 37573.5913);
+    return float2(x,y);
+}
+
+struct Ray
+{
+	float3 origin;
+	float3 direction;
+
+	float3 GetPoint(float t)
+	{
+		return origin + t * direction;
+	}
+};
+
+struct Light
+{
+	int type;
+	float3 direction;
+	float3 color;
+	float intensity;
+};
+
+struct Material
+{
+	float3 color;
+	float reflectivness;
+};
+
+struct HitResult
+{
+	float t;
+	float3 pos;
+	float3 normal;
+
+	Material material;
+
+	float3 GetColor(Ray ray, Light light)
+	{
+		float nDotL = 0.5 * dot(normal, light.direction) + 0.5;
+		//float nDotL = max(0, dot(normal, -light.direction));
+		float3 h = normalize(-ray.direction + light.direction);
+		float nDotH = max(0, dot(normal, h));
+		float3 diffuse = material.color * nDotL;
+		float3 specular = material.color * pow(nDotH, 10);
+		return light.color * light.intensity * (diffuse + specular);
+	}
+};
+
+struct Sphere
+{
+	float3 center;
+	float radius;
+	Material material;
+
+	bool Hit(in Ray ray, float tMin, float tMax, out HitResult ret)
+	{
+		float3 oc = ray.origin - center;
+		float a = dot(ray.direction, ray.direction);
+		float b = dot(oc, ray.direction);
+		float c = dot(oc, oc) - radius * radius;
+		float discriminant = b * b - a * c;
+		if(discriminant >= 0)
+		{
+			float d = sqrt(b * b - a * c);
+			float t = (-b - d) / a;
+			if(t < tMax && t > tMin)
+			{
+				ret.t = t;
+				ret.pos = ray.GetPoint(t);
+				ret.normal = normalize((ret.pos - center) / radius);
+				ret.material = material;
+				return true;
+			}
+		}
+
+		return false;
+	}
+};
+
+struct Plane
+{
+	float3 normal;
+	float3 position;
+	Material material;	
+
+	void Init(float3 _normal, float _d)
+	{
+		normal = _normal;
+		position = _d * _normal;
+	}
+
+	bool Hit(Ray ray, float tMin, float tMax, out HitResult ret)
+	{
+		float a = dot(ray.direction, normal);
+		if(a >= 0)
+		{
+			return false;
+		}
+
+		float b = dot(normal, ray.origin - position);
+		ret.t = -b / a;
+		ret.pos = ray.GetPoint(ret.t);
+		ret.normal = normal;
+		ret.material = material;
+
+		return true;
+	}
+};
+
+struct Camera
+{
+	float3 origin;
+	float3 u;
+	float3 v;
+	float3 w;
+
+
+	Ray GetRay(float2 uv)
+	{
+		Ray ray;
+		ray.origin = origin;
+		//ray.direction = normalize(w + (uv.x - 0.5) * u + (uv.y - 0.5) * v);
+		ray.direction = normalize(w + uv.x * 2 * u - u + uv.y * 2 * v - v);
+		return ray;
+	}
+};
+
+StructuredBuffer<Sphere> spheres;
+
+#define SphereCount 2
+#define MaxFloat 999999999.0
+int MaxReflectCount;
+//#define MaxReflectCount 2
+struct ObjList
+{
+	//Sphere spheres[SphereCount];
+	Plane plane;
+
+	bool Hit(Ray ray, float tMin, float tMax, out HitResult ret)
+	{
+		uint sphereCount;
+		uint stride;
+		spheres.GetDimensions(sphereCount, stride); 
+
+		bool bHit = false;
+		float t = MaxFloat;
+		for(int i = 0; i < sphereCount; ++i)
+		{
+			HitResult hitRet;
+			if(spheres[i].Hit(ray, 0.0001, MaxFloat, hitRet) && t > hitRet.t)
+			{
+				bHit = true;
+				t = hitRet.t;
+				ret = hitRet;
+			}
+		}
+
+		{
+			HitResult hitRet;
+			if(plane.Hit(ray, 0.0001, MaxFloat, hitRet) && t > hitRet.t)
+			{
+				bHit = true;
+				t = hitRet.t;
+				ret = hitRet;
+			}
+		}
+
+		return bHit;
+	}
+
+	float3 Reflect(Light light, Ray ray, int maxReflect, float tMin, float tMax)
+	{
+		float3 color = float3(0, 0, 0);
+		float reflectivness = 1;
+		HitResult hitRet;
+		do
+		{
+
+			if(Hit(ray, tMin, tMax, hitRet))
+			{
+				color = color * (1 - reflectivness) + reflectivness * hitRet.GetColor(ray, light);
+
+				reflectivness = hitRet.material.reflectivness;
+				ray.origin = hitRet.pos;
+				ray.direction = normalize(ray.direction - 2 * hitRet.normal * dot(hitRet.normal, ray.direction));
+			}
+		}
+		while(--maxReflect > 0 && reflectivness > 0);
+
+		return color;
+	}
+};
+
+struct World
+{
+	Camera camera;
+	Light light;
+	ObjList objList;
+};
+
+StructuredBuffer<World> world;
+RWTexture2D<float4> ResultTex;
+
+void SetupWorld(out World world)
+{
+	world.light.direction = normalize(float3(1, 1, 1));
+	world.light.color = float3(1, 1, 1);
+	world.light.intensity = 1;
+
+	// int index = 0;
+
+	 Material mat;
+	// mat.color = float3(0, 1, 0);
+	// mat.reflectivness = 0.25;
+	// Sphere obj;
+	// obj.center = float3(-3, 3, 0);
+	// obj.radius = 2;
+	// obj.material = mat;
+	// world.objList.spheres[index++] = obj;
+
+	// mat.color = float3(1, 0, 0);
+	// obj.center = float3(3, 3, 0);
+	// obj.radius = 2;
+	// obj.material = mat;
+	// world.objList.spheres[index++] = obj;
+
+	mat.color = float3(1, 1, 1);
+	Plane plane;
+	plane.Init(float3(0, 1, 0), 0);
+	plane.material = mat;
+	world.objList.plane = plane;
+}
+
+[numthreads(32,32,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	// World world;
+	// SetupWorld(world);
+
+	float2 res;
+	ResultTex.GetDimensions(res.x, res.y);
+	float2 uv = id.xy / res;
+	Ray ray = world[0].camera.GetRay(uv);
+	float4 color = float4(world[0].objList.Reflect(world[0].light, ray, MaxReflectCount, 0.0001, MaxFloat), 1);
+
+	ResultTex[id.xy] = color;
+}

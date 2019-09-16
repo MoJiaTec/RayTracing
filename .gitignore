@@ -1,0 +1,8 @@
+/.vs
+/Deploy
+/Library
+/Logs
+/obj
+/Packages
+/Assembly-CSharp.csproj
+/RayTracing.sln
