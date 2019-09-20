@@ -210,8 +210,13 @@ struct ObjList
 				color = color * (1 - reflectivness) + reflectivness * hitRet.GetColor(ray, light);
 
 				reflectivness = hitRet.material.reflectivness;
+				float3 reflectedRay = ray.direction - 2 * hitRet.normal * dot(hitRet.normal, ray.direction);
 				ray.origin = hitRet.pos;
-				ray.direction = normalize(ray.direction - 2 * hitRet.normal * dot(hitRet.normal, ray.direction));
+				ray.direction = normalize(reflectedRay);
+			}
+			else
+			{
+				break;
 			}
 		}
 		while(--maxReflect > 0 && reflectivness > 0);

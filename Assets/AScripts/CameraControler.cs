@@ -15,29 +15,39 @@ public class CameraControler : MonoBehaviour {
     //移动变量;
     private Vector3 m_mouseMovePos = Vector3.zero;
     Camera camera;
-    void Start() {
+    void Start()
+    {
         camera = GetComponent<Camera>();
-        if (camera == null) {
+        if (camera == null)
+        {
             enabled = false;
             return;
         }
+
+        var rotation = camera.transform.rotation.eulerAngles;
+        m_deltX = rotation.y;
+        m_deltY = rotation.x;
     }
 
-    void Update() {
+    void Update()
+    {
         //鼠标右键点下控制相机旋转;
-        if (Input.GetMouseButton(1)) {
+        if (Input.GetMouseButton(1))
+        {
             m_deltX += Input.GetAxis("Mouse X") * m_mSpeed * rotateSpd;
             m_deltY -= Input.GetAxis("Mouse Y") * m_mSpeed * rotateSpd;
             m_deltX = ClampAngle(m_deltX, -360, 360);
             m_deltY = ClampAngle(m_deltY, -70, 70);
             camera.transform.rotation = Quaternion.Euler(m_deltY, m_deltX, 0);
         }
-        if (Input.GetMouseButton(2)) {
+        if (Input.GetMouseButton(2))
+        {
             transform.Translate(Vector3.left * Input.GetAxis("Mouse X"));
             transform.Translate(Vector3.down * Input.GetAxis("Mouse Y"));
         }
         //鼠标中键点下场景缩放;
-        if (Input.GetAxis("Mouse ScrollWheel") != 0) {
+        if (Input.GetAxis("Mouse ScrollWheel") != 0)
+        {
             //自由缩放方式;
             m_distance = Input.GetAxis("Mouse ScrollWheel") * 10f;
             camera.transform.localPosition = camera.transform.position + camera.transform.forward * m_distance * moveSpd;
@@ -62,7 +72,8 @@ public class CameraControler : MonoBehaviour {
         }
 
         //相机复位远点;
-        if (Input.GetKey(KeyCode.Space)) {
+        if (Input.GetKey(KeyCode.Space))
+        {
             m_distance = 10.0f;
             camera.transform.localPosition = new Vector3(0, m_distance, 0);
         }

@@ -82,6 +82,8 @@ public class RayTracing : MonoBehaviour
         public RTCamera camera;
         public RTLight light;
         public RTObjectList objList;
+
+        public static int stride = RTCamera.stride + RTLight.stride + RTPlane.stride;
     }
 
     // KernelName //
@@ -178,11 +180,63 @@ public class RayTracing : MonoBehaviour
         this.m_bInited = true;
     }
 
+    float Random(float tMin, float tMax)
+    {
+        return UnityEngine.Random.Range(tMin, tMax);
+    }
+
     void InitWorldBuffer()
     {
         this.m_spheres = new RTSphere[this.m_objCount];
+        int index = 0;
+        {
+            if(index < this.m_objCount)
+            {
+                RTSphere sphere = new RTSphere();
+                sphere.center = new Vector3(0, 1, 0);
+                sphere.radius = 1;
+                sphere.material = new RTMaterial(new Vector3(Random(0.5f, 1), Random(0.5f, 1), Random(0.5f, 1)), Random(0, 0.5f));
+                this.m_spheres[index++] = sphere;
+            }
+
+            if (index < this.m_objCount)
+            {
+                RTSphere sphere = new RTSphere();
+                sphere.center = new Vector3(-4, 1, 0);
+                sphere.radius = 1;
+                sphere.material = new RTMaterial(new Vector3(Random(0.5f, 1), Random(0.5f, 1), Random(0.5f, 1)), Random(0, 0.5f));
+                this.m_spheres[index++] = sphere;
+            }
+
+            if (index < this.m_objCount)
+            {
+                RTSphere sphere = new RTSphere();
+                sphere.center = new Vector3(4, 1, 0);
+                sphere.radius = 1;
+                sphere.material = new RTMaterial(new Vector3(Random(0.5f, 1), Random(0.5f, 1), Random(0.5f, 1)), Random(0, 0.5f));
+                this.m_spheres[index++] = sphere;
+            }
+
+            for (int a = -5; a < 10 && index < this.m_objCount; a++)
+            {
+                for (int b = -3; b < 3 && index < this.m_objCount; b++)
+                {
+                    Vector3 center = new Vector3(a +0.9f * Random(0, 1), 0.2f, b + 0.9f * Random(0, 1));
+                    if ((center - new Vector3(4, 0.2f, 0)).magnitude > 0.9f)
+                    {
+                        RTSphere sphere = new RTSphere();
+                        sphere.center = center;
+                        sphere.radius = 0.2f;
+                        sphere.material = new RTMaterial(new Vector3(Random(0.5f, 1), Random(0.5f, 1), Random(0.5f, 1)), Random(0, 0.5f));
+                        this.m_spheres[index++] = sphere;
+                    }
+                }
+            }
+        }
+
+        /*
         float radius = 2;
-        for(int i = 0; i < this.m_objCount;)
+        for(; index < this.m_objCount;)
         {
             Vector3 pos;
             for(int y = 0; y < 10; ++y)
@@ -197,37 +251,35 @@ public class RayTracing : MonoBehaviour
                         RTSphere sphere = new RTSphere();
                         sphere.center = new Vector3((x - 1) * 2 * (radius + 1), pos.y, pos.z);
                         sphere.radius = radius;
-                        sphere.material = new RTMaterial(new Vector3(UnityEngine.Random.Range(0.5f, 1), UnityEngine.Random.Range(0.5f, 1), UnityEngine.Random.Range(0.5f, 1)), UnityEngine.Random.Range(0, 0.5f));
-                        this.m_spheres[i++] = sphere;
+                        sphere.material = new RTMaterial(new Vector3(Random(0.5f, 1), Random(0.5f, 1), Random(0.5f, 1)), Random(0, 0.5f));
+                        this.m_spheres[index++] = sphere;
 
-                        if(i >= this.m_objCount)
+                        if(index >= this.m_objCount)
                         {
                             break;
                         }
                     }
 
-                    if (i >= this.m_objCount)
+                    if (index >= this.m_objCount)
                     {
                         break;
                     }
                 }
 
-                if (i >= this.m_objCount)
+                if (index >= this.m_objCount)
                 {
                     break;
                 }
             }
-        }
+        }*/
 
         this.m_world.objList.plane = new RTPlane();
         this.m_world.objList.plane.Init(new Vector3(0, 1, 0), 0);
         this.m_world.objList.plane.material = new RTMaterial(new Vector3(1, 1, 1), 0.25f);
 
-        int stride = RTCamera.stride + RTLight.stride + RTPlane.stride;
-        this.m_worldBuffer = new ComputeBuffer(1, stride);
+        this.m_worldBuffer = new ComputeBuffer(1, RTWorld.stride);
 
-        stride = this.m_objCount * RTSphere.stride;
-        this.m_objBuffer = new ComputeBuffer(1, stride);
+        this.m_objBuffer = new ComputeBuffer(this.m_objCount, RTSphere.stride);
     }
 
     void OnRenderImage(RenderTexture src, RenderTexture dest)

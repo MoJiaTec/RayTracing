@@ -222,8 +222,8 @@ GameObject:
   - component: {fileID: 1703538521}
   - component: {fileID: 1703538520}
   - component: {fileID: 1703538519}
-  - component: {fileID: 1703538522}
   - component: {fileID: 1703538523}
+  - component: {fileID: 1703538522}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -264,7 +264,7 @@ Camera:
     height: 1
   near clip plane: 0.3
   far clip plane: 1000
-  field of view: 60
+  field of view: 40
   orthographic: 0
   orthographic size: 5
   m_Depth: -1
@@ -289,8 +289,8 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1703538518}
-  m_LocalRotation: {x: 0.06942159, y: -0.62680453, z: 0.056216497, w: 0.7740391}
-  m_LocalPosition: {x: 8.405207, y: 3.243616, z: -2.199851}
+  m_LocalRotation: {x: -0.09197, y: 0.472637, z: -0.04967615, w: -0.87503606}
+  m_LocalPosition: {x: 12.246118, y: 3.6935194, z: -5.7284408}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
@@ -305,13 +305,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 1703538518}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 787415397a4b78e40babeb46cb556349, type: 3}
+  m_Script: {fileID: 11500000, guid: 5f05b90052eca6e4790de03bdceeb969, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_computeShader: {fileID: 7200000, guid: c97df9277f4c10240899b8ad85563123, type: 3}
+  m_computeShader: {fileID: 7200000, guid: 262ab76b963a27f4fa751da6779f68e1, type: 3}
   m_depth: 10
-  m_sampleCount: 4
-  m_objCount: 60
+  m_sampleCount: 1
+  m_objCount: 500
   m_postShader: {fileID: 4800000, guid: f26661cbe88361f42b5dfe4f75b9c844, type: 3}
 --- !u!114 &1703538523
 MonoBehaviour:

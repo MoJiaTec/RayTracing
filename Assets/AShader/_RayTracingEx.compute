@@ -1,0 +1,429 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+#define HASHSCALE1 .1031
+#define HASHSCALE3 float3(.1031, .1030, .0973)
+#define HASHSCALE4 float4(.1031, .1030, .0973, .1099)
+
+float Hash11(float p)
+{
+	float3 p3  = frac(p.xxx * HASHSCALE1);
+    p3 += dot(p3, p3.yzx + 19.19);
+    return frac((p3.x + p3.y) * p3.z); 
+}
+
+///  2 out, 2 in...
+float2 Hash22(float2 p)
+{
+	float3 p3 = frac(float3(p.xyx) * HASHSCALE3);
+    p3 += dot(p3, p3.yzx+19.19);
+    return frac((p3.xx+p3.yz)*p3.zy);
+}
+
+//随机数值生成器
+float Random(float n)
+{
+	return frac(sin(n) * 43758.5453123);
+	//return 0.5;
+}
+
+float2 Random2(float2 co)
+{
+    float x = frac(sin(dot(co.xy ,float2(122.9898,783.233))) * 43758.5453);
+    float y = frac(sin(dot(co.xy ,float2(457.6537,537.2793))) * 37573.5913);
+    return float2(x,y);
+    //return normalize(float2(0.5, 0.5));
+}
+
+float schlick(float cosine, float ref_idx) 
+{
+    float r0 = (1-ref_idx) / (1+ref_idx);
+    r0 = r0 * r0;
+    return r0 + (1 - r0) * pow((1 - cosine),5);
+}
+
+bool refract(float3 v, float3 n, float ni_over_nt, out float3 refracted) {
+    float3 uv = normalize(v);
+    float dt = dot(uv, n);
+    float discriminant = 1.0 - ni_over_nt*ni_over_nt*(1-dt*dt);
+    if (discriminant > 0) 
+    {
+        refracted = ni_over_nt*(uv - n*dt) - n*sqrt(discriminant);
+        return true;
+    }
+    else
+        return false;
+}
+
+float3 RandomInUnitSphere(float3 n)
+{
+	return normalize(2 * frac(sin(n) * 43758.5453123) - float3(1, 1, 1));
+	//return normalize(float3(0.5, 0.5, 0.5));
+}
+
+struct Ray
+{
+	float3 origin;
+	float3 direction;
+
+	float3 GetPoint(float t)
+	{
+		return origin + t * direction;
+	}
+};
+
+struct Light
+{
+	int type;
+	float3 direction;
+	float3 color;
+	float intensity;
+};
+
+struct Material
+{
+	int type;
+
+	float3 albedo;
+	float fuzz;
+	float ref_idx;
+
+	bool Scatter(Ray ray, float3 pos, float3 normal, out float3 attenuation, out Ray scattered)
+	{
+		if(type == 1)
+		{//非金属材质
+			scattered.origin = pos;
+			scattered.direction = normalize(normal + RandomInUnitSphere(normal)); 
+			//scattered.direction = normalize(reflect(ray.direction, normal));
+			attenuation = albedo;
+			return true;
+		}
+		else if(type == 2)
+		{//金属材质
+			float3 reflected = normalize(reflect(ray.direction, normal));
+			scattered.origin = pos;
+			scattered.direction = normalize(reflected + fuzz * RandomInUnitSphere(reflected));
+			attenuation = albedo;
+			return dot(scattered.direction, normal) > 0;
+		}
+		else if(type == 3)
+		{//绝缘体材质
+             float3 outward_normal;
+             float3 reflected = normalize(reflect(ray.direction, normal));
+             float ni_over_nt;
+             attenuation = float3(1.0, 1.0, 1.0);
+             float3 refracted;
+             float reflect_prob;
+             float cosine;
+             if (dot(ray.direction, normal) > 0)
+			 {
+                  outward_normal = -normal;
+                  ni_over_nt = ref_idx;
+               // cosine = ref_idx * dot(ray.direction, normal) / ray.direction.length();
+                  cosine = dot(ray.direction, normal);
+                  cosine = sqrt(1 - ref_idx*ref_idx*(1-cosine*cosine));
+             }
+             else 
+			 {
+                  outward_normal = normal;
+                  ni_over_nt = 1.0 / ref_idx;
+                  cosine = -dot(ray.direction, normal);
+             }
+
+			 //计算反射系数
+             if (refract(ray.direction, outward_normal, ni_over_nt, refracted))
+                reflect_prob = schlick(cosine, ref_idx);
+             else
+                reflect_prob = 1.0;
+
+             scattered.origin = pos;
+			 //确定是反射还是折射
+             if (Random(reflect_prob) < reflect_prob)
+                scattered.direction = reflected;
+             else
+                scattered.direction = normalize(refracted);
+             return true;
+		}
+
+		return false;
+	}
+};
+
+struct HitResult
+{
+	float t;
+	float3 pos;
+	float3 normal;
+
+	Material material;
+};
+
+struct Sphere
+{
+	float3 center;
+	float radius;
+	Material material;
+
+	bool Hit(Ray ray, float tMin, float tMax, out HitResult ret)
+	{
+		float3 oc = ray.origin - center;
+		float a = dot(ray.direction, ray.direction);
+		float b = dot(oc, ray.direction);
+		float c = dot(oc, oc) - radius * radius;
+		float discriminant = b * b - a * c;
+		if(discriminant >= 0)
+		{
+			float d = sqrt(b * b - a * c);
+			float t = (-b - d) / a;
+			if(t < tMax && t > tMin)
+			{
+				ret.t = t;
+				ret.pos = ray.GetPoint(t);
+				ret.normal = normalize((ret.pos - center) / radius);
+				ret.material = material;
+				return true;
+			}
+			else
+			{
+				t = (-b + d) / a;
+				if(t < tMax && t > tMin)
+				{
+					ret.t = t;
+					ret.pos = ray.GetPoint(t);
+					ret.normal = normalize((ret.pos - center) / radius);
+					ret.material = material;
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+};
+
+struct Plane
+{
+	float3 normal;
+	float3 position;
+	Material material;	
+
+	void Init(float3 _normal, float _d)
+	{
+		normal = _normal;
+		position = _d * _normal;
+	}
+
+	bool Hit(Ray ray, float tMin, float tMax, out HitResult ret)
+	{
+		float a = dot(ray.direction, normal);
+		if(a >= 0)
+		{
+			return false;
+		}
+
+		float b = dot(normal, ray.origin - position);
+		float t = -b / a;
+		if(t < tMax && t > tMin)
+		{
+			ret.t = t;
+			ret.pos = ray.GetPoint(t);
+			ret.normal = normal;
+			ret.material = material;
+
+			return true;
+		}
+
+		return false;
+	}
+};
+
+struct Camera
+{
+	float3 origin;
+	float3 u;
+	float3 v;
+	float3 w;
+
+
+	Ray GetRay(float2 uv)
+	{
+		Ray ray;
+		ray.origin = origin;
+		//ray.direction = normalize(w + (uv.x - 0.5) * u + (uv.y - 0.5) * v);
+		ray.direction = normalize(w + uv.x * 2 * u - u + uv.y * 2 * v - v);
+		return ray;
+	}
+};
+
+StructuredBuffer<Sphere> spheres1;
+StructuredBuffer<Sphere> spheres2;
+StructuredBuffer<Sphere> spheres3;
+// StructuredBuffer<Sphere> spheres4;
+// StructuredBuffer<Sphere> spheres5;
+// StructuredBuffer<Sphere> spheres6;
+// StructuredBuffer<Sphere> spheres7;
+// StructuredBuffer<Sphere> spheres8;
+// StructuredBuffer<Sphere> spheres9;
+// StructuredBuffer<Sphere> spheres10;
+
+#define MaxFloat 999999999.0
+
+struct ObjList
+{
+	Plane plane;
+
+	bool HitSphere(StructuredBuffer<Sphere> spheres, Ray ray, float tMin, inout float tMax, out HitResult ret)
+	{
+		bool bHit = false;
+
+		uint sphereCount;
+		uint stride;
+		spheres.GetDimensions(sphereCount, stride); 
+		for(uint i = 0; i < sphereCount; ++i)
+		{
+			HitResult hitRet;
+			if(spheres[i].Hit(ray, tMin, tMax, hitRet))
+			{
+				bHit = true;
+				tMax = hitRet.t;
+				ret = hitRet;
+			}
+		}
+
+		return bHit;
+	}
+
+	bool Hit(Ray ray, float tMin, float tMax, out HitResult ret)
+	{
+		bool bHit = false;
+
+		HitResult hitRet;
+		if(HitSphere(spheres1, ray, tMin, tMax, hitRet))
+		{
+			bHit = true;
+			ret = hitRet;
+		}
+		if(HitSphere(spheres2, ray, tMin, tMax, hitRet))
+		{
+			bHit = true;
+			ret = hitRet;
+		}
+		if(HitSphere(spheres3, ray, tMin, tMax, hitRet))
+		{
+			bHit = true;
+			ret = hitRet;
+		}
+		// if(HitSphere(spheres4, ray, tMin, tMax, hitRet))
+		// {
+		// 	bHit = true;
+		// 	ret = hitRet;
+		// }
+		// if(HitSphere(spheres5, ray, tMin, tMax, hitRet))
+		// {
+		// 	bHit = true;
+		// 	ret = hitRet;
+		// }
+		// if(HitSphere(spheres6, ray, tMin, tMax, hitRet))
+		// {
+		// 	bHit = true;
+		// 	ret = hitRet;
+		// }
+		// if(HitSphere(spheres7, ray, tMin, tMax, hitRet))
+		// {
+		// 	bHit = true;
+		// 	ret = hitRet;
+		// }
+		// if(HitSphere(spheres8, ray, tMin, tMax, hitRet))
+		// {
+		// 	bHit = true;
+		// 	ret = hitRet;
+		// }
+		// if(HitSphere(spheres9, ray, tMin, tMax, hitRet))
+		// {
+		// 	bHit = true;
+		// 	ret = hitRet;
+		// }
+		// if(HitSphere(spheres10, ray, tMin, tMax, hitRet))
+		// {
+		// 	bHit = true;
+		// 	ret = hitRet;
+		// }
+
+
+		{
+			if(plane.Hit(ray, tMin, tMax, hitRet))
+			{
+				bHit = true;
+				tMax = hitRet.t;
+				ret = hitRet;
+			}
+		}
+
+		return bHit;
+	}
+};
+
+struct World
+{
+	Camera camera;
+	Light light;
+	ObjList objList;
+
+	int maxReflectCount;
+	int sampleCount;
+
+	float3 GetColor(Ray ray, int depth)
+	{
+		float3 color = float3(1, 1, 1);
+		//[unroll(10)]
+		do
+		{
+			HitResult hitRet;
+			if(objList.Hit(ray, 0.0001, MaxFloat, hitRet))
+			{
+				float3 attenuation;
+				Ray scatteredRay;
+				if(hitRet.material.Scatter(ray, hitRet.pos, hitRet.normal, attenuation, scatteredRay))
+				{
+					ray = scatteredRay;
+					color *= attenuation;
+				}
+				else
+				{
+					color = float3(0, 0, 0);
+					break;
+				}
+			}
+			else
+			{
+				color *= lerp(float3(1, 1, 1), float3(0.5, 0.7, 1), 0.5 * (ray.direction.y + 1));
+				break;
+			}
+		}
+		while(--depth > 0);
+
+		return color;
+	}
+};
+
+StructuredBuffer<World> world;
+RWTexture2D<float4> ResultTex;
+
+[numthreads(32,32,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	float2 res;
+	ResultTex.GetDimensions(res.x, res.y);
+	float4 color = float4(0, 0, 0, 0);
+	for(int i = 0; i < world[0].sampleCount; ++i)
+	{
+		float2 uv = (id.xy + Random2(id.xy)) / res;
+		Ray ray = world[0].camera.GetRay(uv);
+		color += float4(world[0].GetColor(ray, world[0].maxReflectCount), 1);
+	}
+	color /= world[0].sampleCount;
+	color = sqrt(color);
+
+
+	ResultTex[id.xy] = color;
+}
